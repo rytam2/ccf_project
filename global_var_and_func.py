@@ -47,9 +47,11 @@ with open('kernel.pkl', 'rb') as f:
     (sst_kernels, eis_kernels, tadv_kernels, rh_kernels, omega_kernels, ws_kernels,
      sst_obs_kernels, eis_obs_kernels, tadv_obs_kernels, rh_obs_kernels, omega_obs_kernels, ws_obs_kernels) = pickle.load(f)
 
+## landmask variable 
+landmask=(~np.isnan(sst_kernels.ccsm4)).astype('int').where((sst_kernels.lat>-60)&(sst_kernels.lat<60))
 #==================================================================================================================================================================
 
-# Global Functions 
+# Functions 
 def renamevarname(var):
     return var.rename(rename_dict)
 
@@ -69,6 +71,8 @@ def extract_abrupt(ds_abrupt):
     ds_fast = ds_abrupt.isel(time=slice(0,240))
     ds_slow = ds_abrupt.isel(time=slice(240,1752))#1800)) #4/24:EDIT END INDEX to 1800 AFTER CMIP6 4XCO2 DATA DOWNLOAD
     return ds_fast, ds_slow
+
+# Main Calculation Functions =================================================================================================
 
 def remove_time_mean(CCF_tseries):
     # CCF_anom - applies removal of seasonal cycle to all 16 models in the dataset
@@ -91,110 +95,6 @@ def hat_and_zonal(var):
     var_hat = ensemble_mean(var)
     var_hat_zonal = var_hat.mean("lon")
     return var_hat, var_hat_zonal
-
-def make_textbox(axes, string):
-
-    box1 = offsetbox.TextArea(string,textprops=dict(fontsize=14,ha='left',fontweight='bold'))
-    anchored_box = offsetbox.AnchoredOffsetbox(loc=3,
-                                 child=box1, pad=0.2,
-                                 frameon=False,
-                                 bbox_to_anchor=(0,1),
-                                 bbox_transform=axes.transAxes,
-                                 borderpad=.2)
-    axes.add_artist(anchored_box)
-    
-    return
-
-def melt(*args):
-    return [pd.melt(df, id_vars=['exp', 'model'],
-        value_vars=ccf_str,
-        var_name='var',
-        value_name='dR/dT').set_index("idx", inplace=True) for df in args]
-
-def get_mean_df(df,exp,var):
-    df_subset = df.loc[df['exp'].isin([exp]) & df['var'].isin([var])]
-    dRdT_mean = df_subset['dR/dT'].mean()
-    
-    new_row = {'exp':exp,
-               'model':'mean',
-               'var':var,
-               'dR/dT':dRdT_mean,
-               'var_numeric':df_subset['var_numeric'].unique()[0],
-               'var_offset': df_subset['var_offset'].unique()[0]}
-    df.loc[len(df)] = new_row
-    return df
-
-
-# Main Calculation Functions ==================================================================================================
-## landmask variable 
-with open('kernel.pkl', 'rb') as f:
-    kernels = pickle.load(f)
-sst_kernels=kernels[0]
-landmask=(~np.isnan(sst_kernels.ccsm4)).astype('int').where((sst_kernels.lat>-60)&(sst_kernels.lat<60))
-
-
-# !!!!! OLD CODE start ======
-### Glob Temp Change Trend
-# ts_amip = xr.open_mfdataset(root_path+'ts_'+'amip'+'_CMIP5&6_*.nc')
-# glob_ts_anom = spatial_weighted_mean(ts_amip) #weighted mean 
-# glob_ts_poly = glob_ts_anom.polyfit(dim="time",deg=1)
-# glob_ts_trends = glob_ts_poly.sel(degree=1).drop_vars("degree").rename(dict(zip(glob_ts_poly.data_vars, model_list))) #dK/dt (degC/year)
-
-# def ccf_trends(landmask, ds): 
-#     ds_anom = ds.map(remove_time_mean)*landmask #monthly anonaly tseries at all location 
-#     ds_poly = ds_anom.polyfit(dim="time",deg=1)
-#     ds_trends = ds_poly.sel(degree=1).drop_vars("degree").rename(dict(zip(ds_poly.data_vars, model_list))) #dK/dt (degC/year)
-#     return ds_trends
-
-
-# def ccf_changes_perglobts(landmask, ds_amip, ds_hist, ds_fast, ds_slow): 
-#     # returns datasets of 1) unit of CCF change per degree of warming (K/K, [lat, lon]) 2) model ensemble of (1), 3) zonal mean of (2); 
-#     # 4) weighted glob mean of (1); and model-ensemble mean of (4)
-#     ds_trend_amip = ccf_trends(landmask, ds_amip)
-#     ds_trend_hist = ccf_trends(landmask, ds_hist)
-#     ds_trend_fast = ccf_trends(landmask, ds_fast)
-#     ds_trend_slow = ccf_trends(landmask, ds_slow)
-
-#     ds_trends = xr.concat([ds_trend_amip,ds_trend_hist,ds_trend_fast,ds_trend_slow],dim=xr.DataArray(["amip","hist","fast","slow"],dims="exp",name="experiment"))
-    
-#     ds_perglobts = ds_trends/glob_ts_trends # get unit change of CCF(ts) per change in glob ts dK/dK (K/K)
-#     ds_perglobts_hat = ensemble_mean(ds_perglobts) #model mean (hat)
-#     ds_perglobts_hat_zonal = ds_perglobts_hat.mean("lon")#zonal-model mean 
-#     ds_perglobts_glob = spatial_weighted_mean(ds_perglobts) #spatially weighted avged trends for each model 
-#     ds_perglobts_hat_glob = spatial_weighted_mean(ds_perglobts_hat) #spatially weighted avged trends of model ensemble
-
-#     return ds_perglobts, ds_perglobts_hat, ds_perglobts_hat_zonal, ds_perglobts_glob, ds_perglobts_hat_glob  
-# !!!!! OLD CODE END ======
-
-
-# Goal: loop thorugh model and replace each CCF (time,lat,lon)'s time coordinates to temp changes - varying dKs for each models!! then take trends (dCCF/dT - [unit/K])
-# Using SST as example 
-
-# takes input: var to be regressed (lat,lon,time,exp; 16 var from each models) , TS from each experiment (lat,lon,time; 16 var from each models) 
-
-# Goal: loop thorugh model and replace each CCF (time,lat,lon)'s time coordinates to temp changes - varying dKs for each models!! then take trends (dCCF/dT - [unit/K])
-# Using SST as example 
-
-# takes input: var to be regressed (lat,lon,time,exp; 16 var from each models) , TS from each experiment (lat,lon,time; 16 var from each models) 
-#==================================================================================================================
-#### NOTE: FUNCTION RETIRED: ENSO signal masks global warming signal 
-# def regression(glob_ts,var_anom):
-#     combined = []
-#     for i in model_list:
-#         # Replace time dimension with change in Temp and take regression 
-#         da = var_anom.rename({"time":'dT'})
-#         da = da[i].assign_coords(dT=glob_ts.sel(model=i).data)
-
-#         mask = da.notnull().compute()
-#         da_masked = da.where(mask, drop=True)
-        
-#         da_poly = da_masked.polyfit(dim="dT",deg=1)
-#         dVar_dT_model = da_poly.sel(degree=1).drop_vars("degree").polyfit_coefficients 
-#         combined.append(dVar_dT_model)
-
-#     ds_combined = xr.concat(combined, dim="model").assign_coords(model=("model", model_list))
-#     return ds_combined
-#==================================================================================================================
 
 def regression(var_anom):
     combined = []
@@ -248,11 +148,7 @@ def ccf_changes_perglobts(ts_amip, var_amip,\
     ds_perglobts = xr.concat([perglobts_amip,perglobts_hist,perglobts_fast,perglobts_slow],dim=xr.DataArray(["amip","hist","fast","slow"],dims="exp",name="experiment"))
     
     perglobts_glob = spatial_weighted_mean(ds_perglobts) #spatially weighted avged trends for each model [model,exp]
-    # perglobts_hat = ensemble_mean(ds_perglobts) #model mean (hat) [lat, lon,exp]
-    # perglobts_hat_zonal = perglobts_hat.mean("lon")#zonal-model mean [lat,exp]
-    # perglobts_hat_glob = ensemble_mean(perglobts_glob) #spatially weighted avged trends of model ensemble [exp]
-
-    return ds_perglobts#, perglobts_glob, perglobts_hat, perglobts_hat_zonal, perglobts_hat_glob
+    return ds_perglobts
 
 
 def get_feedback(ccf_perglobts, mod_kernel,obs_kernels=None): 
@@ -264,7 +160,7 @@ def get_feedback(ccf_perglobts, mod_kernel,obs_kernels=None):
         dR_ccf_perglobts_modis = ccf_perglobts*obs_kernels['modis']
         dR_ccf_perglobts_patmosx = ccf_perglobts*obs_kernels['patmosx']
         dR_ccf_perglobts_mmkern = ccf_perglobts*ensemble_mean(mod_kernel)
-        # print('obs kernel calc done')
+        
         return dR_ccf_perglobts,dR_ccf_perglobts_ceres,dR_ccf_perglobts_isccp,dR_ccf_perglobts_modis,dR_ccf_perglobts_patmosx,dR_ccf_perglobts_mmkern
     
     return dR_ccf_perglobts
@@ -293,7 +189,7 @@ def prime_mmm_calc(kernel,ccf_perglobts):
     return dR_kp_cp, dR_km_cp, dR_kp_cm, dR_km_cm
 
 def indv_var_calc(kernel,ccf_perglobts,dR_ik_ic,ccf):
-    # goal: return a [lat,lon,exp,comb] where comb is the combination of ik-ic, km-cp, kp-cm, diff 
+    # return a [lat,lon,exp,comb] where comb is the combination of ik-ic, km-cp, kp-cm, diff (p: per model; m: ensemble mean; ikic: individual kernel, individual mean)
     # func should be applied to all 6 ccfs except the total 
     dR_ccf_kp_cp,dR_ccf_km_cp,dR_ccf_kp_cm,dR_ccf_km_cm = prime_mmm_calc(kernel,ccf_perglobts)
     

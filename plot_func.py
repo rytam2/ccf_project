@@ -34,8 +34,19 @@ exp_str = ['amip','hist','fast','slow']
 
 x_pos_map = {label: pos for pos, label in enumerate(ccf_str)}
 
+def make_textbox(axes, string):
 
-# Data Wrangling on Dataframe =================================================================================================================================================================
+    box1 = offsetbox.TextArea(string,textprops=dict(fontsize=14,ha='left',fontweight='bold'))
+    anchored_box = offsetbox.AnchoredOffsetbox(loc=3,
+                                 child=box1, pad=0.2,
+                                 frameon=False,
+                                 bbox_to_anchor=(0,1),
+                                 bbox_transform=axes.transAxes,
+                                 borderpad=.2)
+    axes.add_artist(anchored_box)
+    return
+    
+# Functions modifying Dataframe (data wrangling, title/cell value modifications) =================================================================================================================================================================
 def melt(*args):
     return [pd.melt(df, id_vars=['exp', 'model'],
         value_vars=ccf_str,
@@ -55,18 +66,14 @@ def get_mean_df(df,exp,var):
     df.loc[len(df)] = new_row
     return df
 
+
 def x_pos_calc(df):
+    #### Calculate x positions in Fig 1 for dataframes 
     x_pos_map = {label: pos for pos, label in enumerate(df['var'].unique())}
     df['var_numeric'] = df['var'].map(x_pos_map)
     df['var_offset'] = df['var_numeric'] + df['exp'].map({'amip': -0.225, 'hist': -0.075, 'fast': 0.075, 'slow': 0.225}) # best for non-staggering errorbars
     # df['var_offset'] = df['var_numeric'] + df['exp'].map({'amip': -0.3, 'hist': -0.1, 'fast': 0.1, 'slow': 0.3}) # best for staggering errorbars
     return df
-
-def rename_exp(df):
-    return df.replace({'amip':'AMIP','hist':'historical','fast': '4xCO2-fast', 'slow': '4xCO2-slow'})
-
-def mean_error_summary(df):
-    return df.groupby(['exp','var','var_numeric','var_offset'])['dR/dT'].agg(['mean', 'std']).reset_index()
 
 def perglobts_add_cyclic_point(da):
     """
@@ -94,9 +101,8 @@ def perglobts_add_cyclic_point(da):
 
 def dR_add_cyclic_point(da):
     """
-    coords diff from perglobts. 
+    Solve Projection Discontinuity problem by interpolation when lon centered at 180 deg. 
     """
-    # Use add_cyclic_point to interpolate input data
     lon_idx = da.dims.index('lon')
     wrap_data, wrap_lon = add_cyclic_point(da, coord=da.lon, axis=lon_idx)
     
@@ -115,30 +121,13 @@ def dR_add_cyclic_point(da):
     return output_da 
 
 
-# # Calculate Mean for all df
-# for i in [df_ikic,df_ceres,df_modis,df_isccp,df_patmos,df_mmccf,df_mmkern]:
-#     for j in range(len(ccf_str)):
-#         for k in range(len(exp)):
-#             print(exp_str[k],ccf_str[j])
-#             i = get_mean_df(i,exp_str[k],ccf_str[j])
+def mean_error_summary(df):
+    return df.groupby(['exp','var','var_numeric','var_offset'])['dR/dT'].agg(['mean', 'std']).reset_index()
 
-#Plotting funcs =================================================================================================================================================================
-# def add_column_titles(fig, titles, y_position=0.9, fontsize=12, fontweight='bold'):
-#     """
-#     Adds column titles to a figure.
-    
-#     Parameters:
-#     - fig: Matplotlib figure object.
-#     - titles: List of titles for each column.
-#     - y_position: y-coordinate for the titles (default is 0.9).
-#     - fontsize: Font size for the titles (default is 12).
-#     - fontweight: Font weight for the titles (default is 'bold').
-#     """
-#     num_titles = len(titles)
-#     for i, title in enumerate(titles):
-#         x_position = (i + 1) / (num_titles + 1)  # Evenly spaced titles
-#         fig.text(x_position, y_position, title, ha='center', va='center', fontsize=fontsize, fontweight=fontweight)
+# Figures convention and aesthetics =================================================================================================================================================================
 
+def rename_exp(df):
+    return df.replace({'amip':'AMIP','hist':'historical','fast': '4xCO2-fast', 'slow': '4xCO2-slow'})
 
 def rename_modname(dfs):
     renamed_dfs = []
@@ -171,16 +160,4 @@ def add_row_titles_from_gridspec(fig, row_titles, gs, x_position=0.09, **kwargs)
                  rotation=90, **kwargs)
 
 
-#### Calculate x positions in Fig 1 for dataframes 
-def x_pos_calc(df):
-    x_pos_map = {label: pos for pos, label in enumerate(df['var'].unique())}
-    df['var_numeric'] = df['var'].map(x_pos_map)
-    df['var_offset'] = df['var_numeric'] + df['exp'].map({'amip': -0.225, 'hist': -0.075, 'fast': 0.075, 'slow': 0.225})
-    return df
 
-
-def stagger_not(df,stag): #stag takes 'yes'/'no'; also require change of values in x_pos_calc 
-    if stag == 'yes':
-        return [j.assign(var_offset=j['var_offset'] + 0.1) for j in df]
-    elif stag == 'no':
-        return df
